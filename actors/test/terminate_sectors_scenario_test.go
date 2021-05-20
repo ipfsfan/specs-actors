@@ -125,7 +125,7 @@ func TestTerminateSectors(t *testing.T) {
 			PoStProof: abi.RegisteredPoStProof_StackedDrgWindow32GiBV1,
 		}},
 		ChainCommitEpoch: dlInfo.Challenge,
-		ChainCommitRand:  []byte("not really random"),
+		ChainCommitRand:  []byte(vm.RandString),
 	})
 
 	// proving period cron adds miner power

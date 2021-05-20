@@ -35,6 +35,10 @@ var EmptyObjectCid cid.Cid
 
 const defaultGasLimit = 5_000_000_000
 
+// This is set to match the test vector default randomness value
+// https://github.com/filecoin-project/test-vectors/blob/master/schema/schema_randomness.go#L76
+const RandString = "i_am_random_____i_am_random_____"
+
 // Context for an individual message invocation, including inter-actor sends.
 type invocationContext struct {
 	rt               *VM
@@ -284,11 +288,11 @@ func (ic *invocationContext) GetActorCodeCID(a address.Address) (cid.Cid, bool) 
 }
 
 func (ic *invocationContext) GetRandomnessFromBeacon(_ crypto.DomainSeparationTag, _ abi.ChainEpoch, _ []byte) abi.Randomness {
-	return []byte("not really random")
+	return []byte(RandString)
 }
 
 func (ic *invocationContext) GetRandomnessFromTickets(_ crypto.DomainSeparationTag, _ abi.ChainEpoch, _ []byte) abi.Randomness {
-	return []byte("not really random")
+	return []byte(RandString)
 }
 
 func (ic *invocationContext) ValidateImmediateCallerAcceptAny() {

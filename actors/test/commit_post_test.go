@@ -224,7 +224,7 @@ func TestCommitPoStFlow(t *testing.T) {
 				PoStProof: abi.RegisteredPoStProof_StackedDrgWindow32GiBV1,
 			}},
 			ChainCommitEpoch: dlInfo.Challenge,
-			ChainCommitRand:  []byte("not really random"),
+			ChainCommitRand:  []byte(vm.RandString),
 		}
 		vm.ApplyOk(t, tv, addrs[0], minerAddrs.RobustAddress, big.Zero(), builtin.MethodsMiner.SubmitWindowedPoSt, &submitParams)
 
@@ -284,10 +284,11 @@ func TestCommitPoStFlow(t *testing.T) {
 				PoStProof: abi.RegisteredPoStProof_StackedDrgWindow32GiBV1,
 			}},
 			ChainCommitEpoch: dlInfo.Challenge,
-			ChainCommitRand:  []byte("not really random"),
+			ChainCommitRand:  []byte(vm.RandString),
 		}
 		// PoSt is rejected for skipping all sectors.
-		result := tv.ApplyMessage(addrs[0], minerAddrs.RobustAddress, big.Zero(), builtin.MethodsMiner.SubmitWindowedPoSt, &submitParams)
+		result, err := tv.ApplyMessage(addrs[0], minerAddrs.RobustAddress, big.Zero(), builtin.MethodsMiner.SubmitWindowedPoSt, &submitParams, t.Name())
+		require.NoError(t, err)
 		assert.Equal(t, exitcode.ErrIllegalArgument, result.Code)
 
 		vm.ExpectInvocation{
