@@ -2,14 +2,29 @@ package vm
 
 import (
 	"bytes"
+	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/go-state-types/network"
+	"github.com/filecoin-project/specs-actors/v5/actors/builtin"
+	"github.com/filecoin-project/specs-actors/v5/actors/util/adt"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-blockservice"
+	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	offline "github.com/ipfs/go-ipfs-exchange-offline"
+	"github.com/ipfs/go-merkledag"
+
 	"github.com/ipfs/go-cid"
+	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipld/go-car"
+	cbg "github.com/whyrusleeping/cbor-gen"
+	xerrors "golang.org/x/xerrors"
 )
 
 // Update this when generating new vectors for a new filecoin network version
@@ -53,13 +68,21 @@ func SetID(id string) Option {
 	}
 }
 
-// func SetState(bs blockstore.BlockStore, stateRoot cid.Cid) Option {
-// 	return func(tv *TestVector) error {
-// 		// todo write car
-// 		// tv.StartState = carBytes
-// 		return nil
-// 	}
-// }
+func SetState(rawRoot cid.Cid, store adt.Store) Option {
+	return func(tv *TestVector) error {
+		root, err := flushTreeTopLevel(context.Background(), store, rawRoot)
+		if err != nil {
+			return err
+		}
+		dserv := dagServiceFromStore(store)
+		carBytes, err := encodeCAR(dserv, root)
+		if err != nil {
+			return err
+		}
+		tv.StartState = carBytes
+		return nil
+	}
+}
 
 func SetEpoch(e abi.ChainEpoch) Option {
 	return func(tv *TestVector) error {
@@ -82,17 +105,24 @@ func SetCircSupply(circSupply big.Int) Option {
 	}
 }
 
-func SetStartStateTree(root cid.Cid) Option {
+func SetStartStateTree(rawRoot cid.Cid, store adt.Store) Option {
 	return func(tv *TestVector) error {
-		// TODO wrap with the toplevel state tree object to get tru root cid
+		fmt.Printf("raw root: %s\n", rawRoot)
+		root, err := flushTreeTopLevel(context.Background(), store, rawRoot)
+		if err != nil {
+			return err
+		}
 		tv.StartStateTree = root
 		return nil
 	}
 }
 
-func SetEndStateTree(root cid.Cid) Option {
+func SetEndStateTree(rawRoot cid.Cid, store adt.Store) Option {
 	return func(tv *TestVector) error {
-		// TODO wrap with the toplevel state tree object to get tru root cid
+		root, err := flushTreeTopLevel(context.Background(), store, rawRoot)
+		if err != nil {
+			return err
+		}
 		tv.EndStateTree = root
 		return nil
 	}
@@ -121,16 +151,9 @@ func StartConditions(v *VM, id string) []Option {
 	opts = append(opts, SetEpoch(v.GetEpoch()))
 	opts = append(opts, SetCircSupply(v.GetCirculatingSupply()))
 	opts = append(opts, SetNetworkVersion(v.networkVersion))
-	opts = append(opts, SetStartStateTree(v.StateRoot()))
+	opts = append(opts, SetStartStateTree(v.StateRoot(), v.store))
+	opts = append(opts, SetState(v.StateRoot(), v.store))
 	opts = append(opts, SetID(id))
-
-	// TODO SetState
-
-	return opts
-}
-
-func EndConditions(v VM, res MessageResult) []Option {
-	var opts []Option
 
 	return opts
 }
@@ -256,4 +279,137 @@ func newTestVectorSerial(tv *TestVector) (*testVectorSerial, error) {
 			},
 		},
 	}, nil
+}
+
+// encodeCAR taken from https://github.com/filecoin-project/test-vectors/blob/master/gen/builders/car.go#L16
+func encodeCAR(dagserv format.DAGService, roots ...cid.Cid) ([]byte, error) {
+	carWalkFn := func(nd format.Node) (out []*format.Link, err error) {
+		//fmt.Printf("%s: %x\n", nd.Cid(), nd.RawData())
+		for _, link := range nd.Links() {
+			// skip sector cids
+			if link.Cid.Prefix().Codec == cid.FilCommitmentSealed || link.Cid.Prefix().Codec == cid.FilCommitmentUnsealed {
+				continue
+			}
+			// skip builtin actor cids
+			if builtin.IsBuiltinActor(link.Cid) {
+				continue
+			}
+			out = append(out, link)
+		}
+		return out, nil
+	}
+
+	var (
+		out = new(bytes.Buffer)
+		gw  = gzip.NewWriter(out)
+	)
+	fmt.Printf("roots len: %d, roots[0]: %s\n", len(roots), roots[0])
+	if err := car.WriteCarWithWalker(context.Background(), dagserv, roots, gw, carWalkFn); err != nil {
+		return nil, err
+	}
+	if err := gw.Flush(); err != nil {
+		return nil, err
+	}
+	if err := gw.Close(); err != nil {
+		return nil, err
+	}
+
+	return out.Bytes(), nil
+}
+
+func dagServiceFromStore(store adt.Store) format.DAGService {
+	bs := &adtBlockStoreForDAGService{store: store}
+	offl := offline.Exchange(bs)
+	blkserv := blockservice.New(bs, offl)
+	return merkledag.NewDAGService(blkserv)
+}
+
+type adtBlockStoreForDAGService struct {
+	store adt.Store
+}
+
+var _ blockstore.Blockstore = (*adtBlockStoreForDAGService)(nil)
+
+func (a *adtBlockStoreForDAGService) DeleteBlock(c cid.Cid) error {
+	return xerrors.Errorf("cannot delete cid: %s, unsupported operation\n", c)
+}
+
+func (a *adtBlockStoreForDAGService) Has(c cid.Cid) (bool, error) {
+	// All errors will be treated as NotFound
+	_, err := a.Get(c)
+	if err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (a *adtBlockStoreForDAGService) Get(c cid.Cid) (blocks.Block, error) {
+	d := cbg.Deferred{}
+	if err := a.store.Get(context.Background(), c, &d); err != nil {
+		return nil, err
+	}
+	return blocks.NewBlockWithCid(d.Raw, c)
+}
+
+func (a *adtBlockStoreForDAGService) GetSize(c cid.Cid) (int, error) {
+	d := cbg.Deferred{}
+	if err := a.store.Get(context.Background(), c, &d); err != nil {
+		return 0, err
+	}
+	return len(d.Raw), nil
+}
+
+func (a *adtBlockStoreForDAGService) Put(b blocks.Block) error {
+	d := cbg.Deferred{
+		Raw: b.RawData(),
+	}
+	_, err := a.store.Put(context.Background(), d)
+	return err
+}
+
+func (a *adtBlockStoreForDAGService) PutMany(bs []blocks.Block) error {
+	for _, b := range bs {
+		if err := a.Put(b); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *adtBlockStoreForDAGService) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
+	return nil, xerrors.Errorf("unsupported operation")
+}
+
+// not supported -- noop
+func (a *adtBlockStoreForDAGService) HashOnRead(enabled bool) {}
+
+// Top level state tree
+
+const CurrentStateTreeVersion = 3
+
+type StateTreeVersion uint64
+
+type StateRoot struct {
+	// State tree version.
+	Version StateTreeVersion
+	// Actors tree. The structure depends on the state root version.
+	Actors cid.Cid
+	// Info. The structure depends on the state root version.
+	Info cid.Cid
+}
+
+type StateInfo0 struct{}
+
+// Write top level object of state tree
+func flushTreeTopLevel(ctx context.Context, store adt.Store, rawRoot cid.Cid) (cid.Cid, error) {
+	infoCid, err := store.Put(ctx, new(StateInfo0))
+	if err != nil {
+		return cid.Undef, err
+	}
+	top := &StateRoot{
+		Version: CurrentStateTreeVersion,
+		Actors:  rawRoot,
+		Info:    infoCid,
+	}
+	return store.Put(ctx, top)
 }

@@ -3,7 +3,9 @@ package vm
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"os"
 
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
@@ -360,14 +362,25 @@ func (vm *VM) ApplyMessage(from, to address.Address, value abi.TokenAmount, meth
 		if err := SetMessage(from, to, callSeq, value, method, params)(&tv); err != nil {
 			return MessageResult{}, err
 		}
-		if err := SetEndStateTree(vm.StateRoot())(&tv); err != nil {
+		if err := SetEndStateTree(vm.StateRoot(), vm.store)(&tv); err != nil {
 			return MessageResult{}, err
 		}
 		if err := SetReceipt(result)(&tv); err != nil {
 			return MessageResult{}, err
 		}
-		// TODO serialize test vector, name target file, write to it
-
+		b, err := (&tv).MarshalJSON()
+		if err != nil {
+			return MessageResult{}, err
+		}
+		h := sha256.Sum256(b)
+		fname := fmt.Sprintf("%x", string(h[:]))
+		if err := os.Mkdir("test-vectors/"+info, os.ModeDir); err != nil {
+			return MessageResult{}, err
+		}
+		if err := os.WriteFile("test-vectors/"+info+"/"+fname, b, os.ModePerm); err != nil {
+			return MessageResult{}, err
+		}
+		fmt.Printf("START--\n%s\n--END\n", string(b))
 	}
 	return result, nil
 }

@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/filecoin-project/go-bitfield"
@@ -41,7 +42,7 @@ func TestTerminateSectors(t *testing.T) {
 		WindowPoStProofType: abi.RegisteredPoStProof_StackedDrgWindow32GiBV1,
 		Peer:                abi.PeerID("not really a peer id"),
 	})
-
+	fmt.Printf("First\n")
 	minerAddrs, ok := ret.(*power.CreateMinerReturn)
 	require.True(t, ok)
 

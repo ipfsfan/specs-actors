@@ -19,6 +19,7 @@ import (
 	vm2 "github.com/filecoin-project/specs-actors/v2/support/vm"
 	"github.com/ipfs/go-cid"
 	"github.com/minio/blake2b-simd"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/pkg/errors"
 
 	"github.com/filecoin-project/specs-actors/v5/actors/builtin"
@@ -522,8 +523,16 @@ func (s fakeSyscalls) HashBlake2b(b []byte) [32]byte {
 	return blake2b.Sum256(b)
 }
 
+// Prefix for testing unsealed sector CIDs (CommD).
+var UnsealedCIDPrefix = cid.Prefix{
+	Version:  1,
+	Codec:    cid.FilCommitmentUnsealed,
+	MhType:   mh.POSEIDON_BLS12_381_A1_FC1,
+	MhLength: 32,
+}
+
 func (s fakeSyscalls) ComputeUnsealedSectorCID(_ abi.RegisteredSealProof, _ []abi.PieceInfo) (cid.Cid, error) {
-	return testing.MakeCID("presealedSectorCID", nil), nil
+	return testing.MakeCID("presealedSectorCID", &UnsealedCIDPrefix), nil
 }
 
 func (s fakeSyscalls) VerifySeal(_ proof.SealVerifyInfo) error {

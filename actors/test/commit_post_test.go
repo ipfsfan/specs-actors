@@ -340,7 +340,7 @@ func TestCommitPoStFlow(t *testing.T) {
 }
 
 func TestMeasurePoRepGas(t *testing.T) {
-	batchSize := 819
+	batchSize := 4
 	fmt.Printf("Batch Size = %d\n", batchSize)
 	printPoRepMsgGas(batchSize)
 
@@ -531,7 +531,7 @@ func TestAggregateOnePreCommitExpires(t *testing.T) {
 
 func TestMeasureAggregatePorepGas(t *testing.T) {
 
-	batchSize := 819
+	batchSize := 4
 	fmt.Printf("batch size = %d\n", batchSize)
 
 	ctx := context.Background()
