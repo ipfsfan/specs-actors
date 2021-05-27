@@ -345,8 +345,14 @@ type MessageResult struct {
 func (vm *VM) ApplyMessage(from, to address.Address, value abi.TokenAmount, method abi.MethodNum, params interface{}, info string) (MessageResult, error) {
 	var result MessageResult
 	var callSeq uint64
+	var fakesAccessed bool
 	var tv TestVector
-	if false { // Todo check env variable for vector generation condition
+
+	// Todo check env variable for vector generation condition
+	conformance := true
+	determinism := true
+
+	if conformance || determinism {
 		// Set test vector pre application conditions
 		startOpts := StartConditions(vm, info)
 		for _, opt := range startOpts {
@@ -356,8 +362,11 @@ func (vm *VM) ApplyMessage(from, to address.Address, value abi.TokenAmount, meth
 		}
 	}
 
-	result, callSeq = vm.applyMessageInternal(from, to, value, method, params)
-	if false { // TODO check env variable for vector generation condition and for output path
+	result, callSeq, fakesAccessed = vm.applyMessageInternal(from, to, value, method, params)
+	if conformance || determinism { // TODO check env variable for vector generation condition and for output path
+		if conformance && fakesAccessed { //
+			return result, nil
+		}
 		// Set test vector message and post application conditions
 		if err := SetMessage(from, to, callSeq, value, method, params)(&tv); err != nil {
 			return MessageResult{}, err
@@ -374,19 +383,59 @@ func (vm *VM) ApplyMessage(from, to address.Address, value abi.TokenAmount, meth
 		}
 		h := sha256.Sum256(b)
 		fname := fmt.Sprintf("%x", string(h[:]))
-		if err := os.Mkdir("test-vectors/"+info, os.ModeDir); err != nil {
-			return MessageResult{}, err
+
+		// Write conformance test-vectors
+		if conformance && !fakesAccessed {
+			dir := "../../test-vectors/conformance/" + info
+			exists, err := dirExists(dir)
+			if err != nil {
+				return MessageResult{}, err
+			}
+			if !exists {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return MessageResult{}, err
+				}
+			}
+			if err := os.WriteFile(dir+"/"+fname, b, 0755); err != nil {
+				return MessageResult{}, err
+			}
 		}
-		if err := os.WriteFile("test-vectors/"+info+"/"+fname, b, os.ModePerm); err != nil {
-			return MessageResult{}, err
+
+		// Write determinism test-vectors
+		if determinism {
+			dir := "../../test-vectors/determinism/" + info
+			exists, err := dirExists(dir)
+			if err != nil {
+				return MessageResult{}, err
+			}
+			if !exists {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					return MessageResult{}, err
+				}
+			}
+			if err := os.WriteFile(dir+"/"+fname, b, 0755); err != nil {
+				return MessageResult{}, err
+			}
 		}
-		fmt.Printf("START--\n%s\n--END\n", string(b))
 	}
 	return result, nil
 }
 
-// ApplyMessage applies the message to the current state.
-func (vm *VM) applyMessageInternal(from, to address.Address, value abi.TokenAmount, method abi.MethodNum, params interface{}) (MessageResult, uint64) {
+// dirExists returns whether the given file or directory exists
+func dirExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// ApplyMessage applies the message to the current state. It returns result of message application, callSeqNum
+// used during application and whether a fake syscall was accessed during invocation
+func (vm *VM) applyMessageInternal(from, to address.Address, value abi.TokenAmount, method abi.MethodNum, params interface{}) (MessageResult, uint64, bool) {
 	// This method does not actually execute the message itself,
 	// but rather deals with the pre/post processing of a message.
 	// (see: `invocationContext.invoke()` for the dispatch and execution)
@@ -395,7 +444,7 @@ func (vm *VM) applyMessageInternal(from, to address.Address, value abi.TokenAmou
 	// load actor from global state
 	fromID, ok := vm.NormalizeAddress(from)
 	if !ok {
-		return MessageResult{nil, exitcode.SysErrSenderInvalid, gasCharged}, 0
+		return MessageResult{nil, exitcode.SysErrSenderInvalid, gasCharged}, 0, false
 	}
 
 	fromActor, found, err := vm.GetActor(fromID)
@@ -404,7 +453,7 @@ func (vm *VM) applyMessageInternal(from, to address.Address, value abi.TokenAmou
 	}
 	if !found {
 		// Execution error; sender does not exist at time of message execution.
-		return MessageResult{nil, exitcode.SysErrSenderInvalid, gasCharged}, 0
+		return MessageResult{nil, exitcode.SysErrSenderInvalid, gasCharged}, 0, false
 	}
 
 	// checkpoint state
@@ -450,6 +499,7 @@ func (vm *VM) applyMessageInternal(from, to address.Address, value abi.TokenAmou
 		gasUsed:              msgGasCharge,
 		gasPrices:            vm.gasPrices,
 		gasAvailable:         defaultGasLimit,
+		fakeSyscallsAccessed: false,
 	}
 
 	// build internal msg
@@ -493,7 +543,7 @@ func (vm *VM) applyMessageInternal(from, to address.Address, value abi.TokenAmou
 	retGasCharge := vm.gasPrices.OnChainReturnValue(len(retBuf.Bytes()))
 	gasCharged = retGasCharge.Total() + ctx.topLevel.gasUsed
 
-	return MessageResult{ret.inner, exitCode, gasCharged}, callSeq
+	return MessageResult{ret.inner, exitCode, gasCharged}, callSeq, ctx.topLevel.fakeSyscallsAccessed
 }
 
 func (vm *VM) StateRoot() cid.Cid {

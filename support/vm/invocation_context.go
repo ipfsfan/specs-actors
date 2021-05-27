@@ -67,6 +67,8 @@ type topLevelContext struct {
 	gasPrices    Pricelist
 	gasUsed      int64
 	gasAvailable int64
+	// Temporary field to workaround test-vector limitations
+	fakeSyscallsAccessed bool
 }
 
 func (tc *topLevelContext) chargeGas(gas GasCharge) {
@@ -221,39 +223,47 @@ func (ic *invocationContext) VerifySignature(signature crypto.Signature, signer 
 		return err
 	}
 	ic.topLevel.chargeGas(charge)
+	ic.topLevel.fakeSyscallsAccessed = true
 	return ic.Syscalls().VerifySignature(signature, signer, plaintext)
 }
 
 func (ic *invocationContext) HashBlake2b(data []byte) [32]byte {
 	ic.topLevel.chargeGas(ic.topLevel.gasPrices.OnHashing(len(data)))
+	ic.topLevel.fakeSyscallsAccessed = true
 	return ic.Syscalls().HashBlake2b(data)
 }
 
 func (ic *invocationContext) ComputeUnsealedSectorCID(reg abi.RegisteredSealProof, pieces []abi.PieceInfo) (cid.Cid, error) {
 	ic.topLevel.chargeGas(ic.topLevel.gasPrices.OnComputeUnsealedSectorCid(reg, pieces))
+	ic.topLevel.fakeSyscallsAccessed = true
 	return ic.Syscalls().ComputeUnsealedSectorCID(reg, pieces)
 }
 
 func (ic *invocationContext) VerifySeal(vi proof.SealVerifyInfo) error {
 	ic.topLevel.chargeGas(ic.topLevel.gasPrices.OnVerifySeal(vi))
+	ic.topLevel.fakeSyscallsAccessed = true
 	return ic.Syscalls().VerifySeal(vi)
 }
 
 func (ic *invocationContext) BatchVerifySeals(vis map[address.Address][]proof.SealVerifyInfo) (map[address.Address][]bool, error) {
 	// no explicit gas charged
+	ic.topLevel.fakeSyscallsAccessed = true
 	return ic.Syscalls().BatchVerifySeals(vis)
 }
 
 func (ic *invocationContext) VerifyAggregateSeals(agg proof.AggregateSealVerifyProofAndInfos) error {
+	ic.topLevel.fakeSyscallsAccessed = true
 	return ic.Syscalls().VerifyAggregateSeals(agg)
 }
 
 func (ic *invocationContext) VerifyPoSt(vi proof.WindowPoStVerifyInfo) error {
+	ic.topLevel.fakeSyscallsAccessed = true
 	ic.topLevel.chargeGas(ic.topLevel.gasPrices.OnVerifyPost(vi))
 	return ic.Syscalls().VerifyPoSt(vi)
 }
 
 func (ic *invocationContext) VerifyConsensusFault(h1, h2, extra []byte) (*runtime.ConsensusFault, error) {
+	ic.topLevel.fakeSyscallsAccessed = true
 	ic.topLevel.chargeGas(ic.topLevel.gasPrices.OnVerifyConsensusFault())
 	return ic.Syscalls().VerifyConsensusFault(h1, h2, extra)
 }
