@@ -59,7 +59,7 @@ const TerminationLifetimeCap = 140 // PARAM_SPEC
 const ConsensusFaultFactor = 5
 
 // Fraction of total reward (block reward + gas reward) to be locked up as of V6
-var LockedRewardFactorNum = big.NewInt(75)
+var LockedRewardFactorNum = big.NewInt(50)
 var LockedRewardFactorDenom = big.NewInt(100)
 
 // Base reward for successfully disputing a window posts proofs.
