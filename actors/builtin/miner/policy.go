@@ -203,7 +203,7 @@ const MinSectorExpiration = 180 * builtin.EpochsInDay // PARAM_SPEC
 // The maximum number of epochs past the current epoch that sector lifetime may be extended.
 // A sector may be extended multiple times, however, the total maximum lifetime is also bounded by
 // the associated seal proof's maximum lifetime.
-const MaxSectorExpirationExtension = 540 * builtin.EpochsInDay // PARAM_SPEC
+const MaxSectorExpirationExtension = 270 * builtin.EpochsInDay // PARAM_SPEC
 
 // Ratio of sector size to maximum number of deals per sector.
 // The maximum number of deals is the sector size divided by this number (2^27)
@@ -277,7 +277,7 @@ type VestSpec struct {
 // The vesting schedule for total rewards (block reward + gas reward) earned by a block producer.
 var RewardVestingSpec = VestSpec{ // PARAM_SPEC
 	InitialDelay: abi.ChainEpoch(0),
-	VestPeriod:   abi.ChainEpoch(180 * builtin.EpochsInDay),
+	VestPeriod:   abi.ChainEpoch(90 * builtin.EpochsInDay),
 	StepDuration: abi.ChainEpoch(1 * builtin.EpochsInDay),
 	Quantization: 12 * builtin.EpochsInHour,
 }

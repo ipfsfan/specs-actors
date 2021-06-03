@@ -38,8 +38,8 @@ func BaselinePowerFromPrev(prevEpochBaselinePower abi.StoragePower) abi.StorageP
 // These numbers are estimates of the onchain constants.  They are good for initializing state in
 // devnets and testing but will not match the on chain values exactly which depend on storage onboarding
 // and upgrade epoch history. They are in units of attoFIL, 10^-18 FIL
-var DefaultSimpleTotal = big.Mul(big.NewInt(330e6), big.NewInt(1e18))   // 330M
-var DefaultBaselineTotal = big.Mul(big.NewInt(770e6), big.NewInt(1e18)) // 770M
+var DefaultSimpleTotal = big.Mul(big.NewInt(330e5), big.NewInt(1e18))   // 330M
+var DefaultBaselineTotal = big.Mul(big.NewInt(770e5), big.NewInt(1e18)) // 770M
 
 // Computes RewardTheta which is is precise fractional value of effectiveNetworkTime.
 // The effectiveNetworkTime is defined by CumsumBaselinePower(theta) == CumsumRealizedPower
