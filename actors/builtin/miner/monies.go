@@ -57,7 +57,7 @@ const TerminationLifetimeCap = 140 // PARAM_SPEC
 const ConsensusFaultFactor = 5
 
 // Fraction of total reward (block reward + gas reward) to be locked up as of V6
-var LockedRewardFactorNumV6 = big.NewInt(75)
+var LockedRewardFactorNumV6 = big.NewInt(50)
 var LockedRewardFactorDenomV6 = big.NewInt(100)
 
 // The projected block reward a sector would earn over some period.
